@@ -3,9 +3,9 @@ import { Router } from '@angular/router';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { first } from 'rxjs/operators';
 
-import { AlertService, UserService } from '../_services';
+import { AlertService, UserService, PasswordService } from '../_services';
 
-@Component({templateUrl: 'register.component.html'})
+@Component({ templateUrl: 'register.component.html' })
 export class RegisterComponent implements OnInit {
     registerForm: FormGroup;
     loading = false;
@@ -15,7 +15,10 @@ export class RegisterComponent implements OnInit {
         private formBuilder: FormBuilder,
         private router: Router,
         private userService: UserService,
-        private alertService: AlertService) { }
+        private alertService: AlertService,
+        private passwordService: PasswordService
+    ) {
+    }
 
     ngOnInit() {
         this.registerForm = this.formBuilder.group({
@@ -27,7 +30,14 @@ export class RegisterComponent implements OnInit {
     }
 
     // convenience getter for easy access to form fields
-    get f() { return this.registerForm.controls; }
+    get f() {
+        return this.registerForm.controls;
+    }
+
+    generatePassword(): void {
+        const generatedPassword = this.passwordService.generatePassword();
+        this.registerForm.patchValue({ password: generatedPassword });
+    }
 
     onSubmit() {
         this.submitted = true;
