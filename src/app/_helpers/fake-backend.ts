@@ -92,7 +92,7 @@ export class FakeBackendInterceptor implements HttpInterceptor {
                         }
                     }
                 } else {
-                    return throwError({ status: 401, error: { message: 'Username is incorrect' } });
+                    return throwError({ status: 401, error: { message: 'Username does not exist in the system' } });
                 }
             }
 
