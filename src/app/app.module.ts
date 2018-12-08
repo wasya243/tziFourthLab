@@ -16,6 +16,7 @@ import { AlertService, AuthenticationService, UserService, PasswordService } fro
 import { HomeComponent } from './home';
 import { LoginComponent } from './login';
 import { RegisterComponent } from './register';
+import {ClickStopPropagationDirective} from './_directives/click-stop-propagation.directive';
 
 @NgModule({
     imports: [
@@ -29,7 +30,8 @@ import { RegisterComponent } from './register';
         AlertComponent,
         HomeComponent,
         LoginComponent,
-        RegisterComponent
+        RegisterComponent,
+        ClickStopPropagationDirective
     ],
     providers: [
         AuthGuard,
