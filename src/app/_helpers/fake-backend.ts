@@ -6,7 +6,19 @@ import { delay, mergeMap, materialize, dematerialize } from 'rxjs/operators';
 // xor encryption functionality
 import { XorEncryption } from '../encryption';
 // import key for xor encryption / decryption
-import { KEY } from '../constants';
+import { KEY, ALLOWED_NUMBER_OF_ATTEMPTS, CODES, BLOCK_UI_TIME } from '../constants';
+
+// helper functions & variables
+let previousUsername = '';
+
+function findUserByUsername(username: string, users: any): any {
+    return users.filter((user: any) => user.username === username)[ 0 ];
+}
+
+function updateUser(user: any, users: any): any {
+    const remappedUsers = users.map((item: any) => item.username === user.username ? Object.assign(item, user) : item);
+    return localStorage.setItem('users', JSON.stringify(remappedUsers));
+}
 
 @Injectable()
 export class FakeBackendInterceptor implements HttpInterceptor {
@@ -17,36 +29,70 @@ export class FakeBackendInterceptor implements HttpInterceptor {
     intercept(request: HttpRequest<any>, next: HttpHandler): Observable<HttpEvent<any>> {
         // array in local storage for registered users
         let users: any[] = JSON.parse(localStorage.getItem('users')) || [];
-
         // wrap in delayed observable to simulate server api call
         return of(null).pipe(mergeMap(() => {
 
             // authenticate
             if (request.url.endsWith('/users/authenticate') && request.method === 'POST') {
-                const xor = new XorEncryption(KEY);
-                // encrypt password before filtering users
-                const encryptedPassword = xor.encrypt(request.body.password);
-                console.log(encryptedPassword)
-                // find if any user matches login credentials
-                let filteredUsers = users.filter(user => {
-                    return user.username === request.body.username && user.password === encryptedPassword;
-                });
+                // get user by current username
+                const userByCurrentUserName = findUserByUsername(request.body.username, users);
+                if (userByCurrentUserName) {
+                    // create instance of xor to encrypt/decrypt values
+                    const xor = new XorEncryption(KEY);
+                    // crypt password, 'cause we store it in an encrypted form for security reasons
+                    const encryptedPassword = xor.encrypt(request.body.password);
+                    // check password equality
+                    if (userByCurrentUserName.password === encryptedPassword) {
+                        // if password is correct
+                        const body = {
+                            id: userByCurrentUserName.id,
+                            username: userByCurrentUserName.username,
+                            firstName: userByCurrentUserName.firstName,
+                            lastName: userByCurrentUserName.lastName,
+                            token: 'fake-jwt-token'
+                        };
 
-                if (filteredUsers.length) {
-                    // if login details are valid return 200 OK with user details and fake jwt token
-                    let user = filteredUsers[ 0 ];
-                    let body = {
-                        id: user.id,
-                        username: user.username,
-                        firstName: user.firstName,
-                        lastName: user.lastName,
-                        token: 'fake-jwt-token'
-                    };
-
-                    return of(new HttpResponse({ status: 200, body: body }));
+                        return of(new HttpResponse({ status: 200, body }));
+                    } else {
+                        // if password is not correct for correct username
+                        if (previousUsername === request.body.username) {
+                            // if current user exceeded number of attempts, so we would block app from accessing for some time
+                            if (userByCurrentUserName.amountOfAttempts > ALLOWED_NUMBER_OF_ATTEMPTS) {
+                                userByCurrentUserName.amountOfAttempts = 0;
+                                updateUser(userByCurrentUserName, users);
+                                return throwError({
+                                    status: 401,
+                                    error: {
+                                        message: `Number of attempts exceeded its allowed limit. Blocking login button for ${BLOCK_UI_TIME} ms`,
+                                        code: CODES.LIMIT_EXCEEDED
+                                    }
+                                });
+                            } else {
+                                // if number of attempts is not exceeded, we should warn user about wrong password
+                                userByCurrentUserName.amountOfAttempts += 1;
+                                updateUser(userByCurrentUserName, users);
+                                return throwError({
+                                    status: 401,
+                                    error: {
+                                        message: 'Invalid password',
+                                        code: CODES.INVALID_PASSWORD
+                                    }
+                                });
+                            }
+                        } else {
+                            // if username is different from previously entered one
+                            const userByPreviousUsername = findUserByUsername(previousUsername, users);
+                            // update only if previous user exists
+                            userByPreviousUsername && (userByPreviousUsername.amountOfAttempts = 0);
+                            userByPreviousUsername && updateUser(userByPreviousUsername, users);
+                            userByCurrentUserName.amountOfAttempts += 1;
+                            updateUser(userByCurrentUserName, users);
+                            previousUsername = request.body.username;
+                            return throwError({ status: 401, error: { message: 'Invalid password', code: CODES.INVALID_PASSWORD } });
+                        }
+                    }
                 } else {
-                    // else return 400 bad request
-                    return throwError({ error: { message: 'Username or password is incorrect' } });
+                    return throwError({ status: 401, error: { message: 'Username is incorrect' } });
                 }
             }
 
@@ -97,6 +143,7 @@ export class FakeBackendInterceptor implements HttpInterceptor {
                 const xor = new XorEncryption(KEY);
                 newUser.id = users.length + 1;
                 newUser.password = xor.encrypt(newUser.password);
+                newUser.amountOfAttempts = 0;
                 users.push(newUser);
                 localStorage.setItem('users', JSON.stringify(users));
 
